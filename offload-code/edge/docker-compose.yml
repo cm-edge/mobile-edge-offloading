@@ -1,0 +1,60 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    ports:
+      - "1883:1883" # Default MQTT port
+      - "8883:8883" # MQTT over TLS
+      - "9001:9001" # WebSockets port (if needed)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "/usr/bin/mosquitto_sub", "-t", "$SYS/#", "-C", "1", "-E", "--quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    network_mode: host
+    restart: unless-stopped
+
+  edge-app:
+    build:
+      context: ..
+      dockerfile: edge/edge.Dockerfile
+    image: ViGeng/conti/edge-app:latest
+    container_name: edge-app
+    environment:
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-192.168.0.112}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+    healthcheck:
+      test: ["CMD", "python3", "/app/shared/health_check.py"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - mqtt-broker
+    network_mode: host
+    restart: unless-stopped
+
+  router:
+    build:
+      context: ..
+      dockerfile: edge/router.Dockerfile
+    image: ViGeng/conti/router:latest
+    container_name: router
+    environment:
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-192.168.0.112}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+    healthcheck:
+      test: ["CMD", "python3", "/app/shared/health_check.py"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - mqtt-broker
+    network_mode: host
+    restart: unless-stopped
